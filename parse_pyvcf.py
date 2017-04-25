@@ -1,7 +1,9 @@
 import sys,argparse
+import numpy as np
 import pickle
 import vcf
 from pandas import *
+from sklearn.decomposition import PCA
 from pprint import pprint
 
 parser = argparse.ArgumentParser(
@@ -29,7 +31,7 @@ def convert_to_matrix(infile):
     vcf_reader = vcf.Reader(open(infile, 'r'))
     count = 0
     # for now, just take SNPs from chr 7
-    for record in vcf_reader.fetch('7'):
+    for record in vcf_reader.fetch('7',20000000,29000000):
         count += 1
         if count % 1000 == 0:
             print count
@@ -42,6 +44,7 @@ def convert_to_matrix(infile):
             if call.called:
                 user_id = call.sample[4:]
                 user_id = user_id.split("_")[0]
+                user_id = float(user_id)
                 genos = call.data.GT
                 geno_score = float(genos[0]) + float(genos[-1])
                 user_genos[user_id] = geno_score
@@ -102,7 +105,41 @@ def process_phenotypes(pheno_file):
     pickle.dump(phenotypes, open("phenotypes.p","wb"))
     return phenotypes
 
-def analysis(genotypes, snp_info, phenotypes):
+# currently available phenotypes: Height, Eye color
+def get_XY(genotypes, phenotypes, pheno_name='Height'):
+    # remove column if more than 80% of data is NaN
+    genotypes = genotypes.loc[:, genotypes.isnull().mean() < 0.8]
+    pheno_filter = phenotypes[phenotypes[pheno_name].notnull()][[pheno_name]]
+    pheno_indices = list(pheno_filter.index)
+    geno_indices = set(list(genotypes.index)).intersection(pheno_indices)
+
+    X = genotypes.ix[geno_indices] # n x p
+    Y = phenotypes.ix[geno_indices] # n x 1
+
+
+    # perform PCA
+    genotypes_pca = genotypes.loc[:, genotypes.isnull().mean() < 0.2]
+    genotypes_pca = genotypes_pca.fillna(0)
+    gpca = PCA(n_components=10).fit(genotypes_pca).transform(genotypes_pca)
+    U = DataFrame(gpca)
+    G = DataFrame(np.cov(U.transpose()))
+    R = DataFrame(np.eye(U.shape[0]))
+    V = DataFrame(U.dot(G.dot(U.transpose())) + R)
+
+    pickle.dump(X, open("X.p","wb"))
+    pickle.dump(Y, open("Y.p","wb"))
+    pickle.dump(U, open("U.p","wb"))
+    pickle.dump(V, open("V.p","wb"))
+    return X, Y, U, V
+
+def test_matching_indices(genotypes, snp_info, phenotypes):
+    from sklearn.decomposition import PCA
+    genotypes = genotypes.fillna(0)
+    a = PCA(n_components=4).fit(genotypes).transform(genotypes)
+    pprint(a)
+    print genotypes.shape
+    print a.shape
+
     pprint(genotypes)
     pprint(snp_info)
     pprint(phenotypes)
@@ -134,7 +171,8 @@ def main(args):
     else:
         genotypes, snp_info = convert_to_matrix(args.input_vcf)
 
-    analysis(genotypes, snp_info, phenotypes)
+    #test_matching_indices(genotypes, snp_info, phenotypes)
+    get_XY(genotypes, phenotypes, 'Height')
 
 if __name__ == '__main__':
     main(sys.argv[1:])
