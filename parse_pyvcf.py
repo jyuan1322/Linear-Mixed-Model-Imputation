@@ -110,6 +110,7 @@ def get_XY(genotypes, phenotypes, pheno_name='Height'):
     # remove column if more than 80% of data is NaN
     genotypes = genotypes.loc[:, genotypes.isnull().mean() < 0.8]
     pheno_filter = phenotypes[phenotypes[pheno_name].notnull()][[pheno_name]]
+    pheno_filter = pheno_filter[(pheno_filter['Height']<=200) & (pheno_filter['Height']>=100)]
     pheno_indices = list(pheno_filter.index)
     geno_indices = set(list(genotypes.index)).intersection(pheno_indices)
 
@@ -118,19 +119,26 @@ def get_XY(genotypes, phenotypes, pheno_name='Height'):
 
 
     # perform PCA
-    genotypes_pca = genotypes.loc[:, genotypes.isnull().mean() < 0.2]
+    #genotypes_pca = genotypes.loc[:, genotypes.isnull().mean() < 0.2]
+    genotypes_pca = X
     genotypes_pca = genotypes_pca.fillna(0)
     gpca = PCA(n_components=10).fit(genotypes_pca).transform(genotypes_pca)
     U = DataFrame(gpca)
     G = DataFrame(np.cov(U.transpose()))
-    R = DataFrame(np.eye(U.shape[0]))
-    V = DataFrame(U.dot(G.dot(U.transpose())) + R)
+    #R = DataFrame(np.eye(U.shape[0]))
+    #V = DataFrame(U.dot(G.dot(U.transpose())) + R)
 
     pickle.dump(X, open("X.p","wb"))
     pickle.dump(Y, open("Y.p","wb"))
     pickle.dump(U, open("U.p","wb"))
-    pickle.dump(V, open("V.p","wb"))
-    return X, Y, U, V
+    pickle.dump(G, open("G.p","wb"))
+    return X, Y, U, G
+
+def get_matrices(pheno_name='Height'):
+    genotypes = DataFrame(pickle.load(open("genotypes.p", "rb")))
+    phenotypes = pickle.load(open("phenotypes.p", "rb"))
+    X, Y, U, G = get_XY(genotypes, phenotypes, pheno_name)
+    return X, Y, U, G
 
 def test_matching_indices(genotypes, snp_info, phenotypes):
     from sklearn.decomposition import PCA
